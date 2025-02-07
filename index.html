@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Real-time Collaborative Map</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet-editable/1.2.0/Leaflet.Editable.min.js"></script>
+    <script type="module">
+        // 🔥 Firebase Configuration (Replace with your own)
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js";
+        import { getDatabase, ref, set, onValue, remove } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-database.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyBp-7FTFQsYi6b4BQjiQmaWj6gZiB9turQ",
+            authDomain: "assomptionlongue-pointe.firebaseapp.com",
+            databaseURL: "https://assomptionlongue-pointe-default-rtdb.firebaseio.com",
+            projectId: "assomptionlongue-pointe",
+            storageBucket: "assomptionlongue-pointe.firebasestorage.app",
+            messagingSenderId: "592654637525",
+            appId: "1:592654637525:web:0448909f615f354db4055c"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
+
+        // 🌍 Initialize the map
+        var map = L.map('map', {editable: true}).setView([45.58, -73.52], 13);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; OpenStreetMap contributors'
+        }).addTo(map);
+
+// Define a custom icon for base markers
+        var baseIcon = L.icon({
+            iconUrl: 'https://cdn-icons-png.flaticon.com/512/684/684908.png', // Change this URL if needed
+            iconSize: [30, 30],
+            iconAnchor: [15, 30],
+            popupAnchor: [0, -30]
+        });
+
+        // Predefined base markers
+        var baseMarkers = [
+            { name: 'I', lat: 45.580713, lon: -73.519522 },
+            { name: 'B', lat: 45.561424, lon: -73.532902 },
+            { name: 'L', lat: 45.579995, lon: -73.516356 },
+            { name: 'H', lat: 45.579037, lon: -73.514373 },
+            { name: 'G', lat: 45.578562, lon: -73.514254 }
+        ];
+
+        // Add base markers with custom icons
+        baseMarkers.forEach(function(point) {
+            L.marker([point.lat, point.lon], { icon: baseIcon })
+                .addTo(map)
+                .bindPopup(point.name);
+        });
+
+        var circleColors = ["red", "blue", "green"];
+        var userMarkers = [];
+
+        // 📌 Load existing markers from Firebase
+        onValue(ref(db, "markers"), (snapshot) => {
+            let data = snapshot.val();
+            if (data) {
+                // Remove old markers
+                userMarkers.forEach(m => { map.removeLayer(m.circle); map.removeLayer(m.labelMarker); });
+                userMarkers = [];
+
+                // Add new ones from Firebase
+                Object.keys(data).forEach((key, i) => {
+                    let latlng = data[key];
+
+                    let circle = L.circleMarker([latlng.lat, latlng.lng], {
+                        color: circleColors[i % 3], fillColor: circleColors[i % 3], fillOpacity: 0.8, radius: 12
+                    }).addTo(map);
+
+                    let label = L.divIcon({
+                        className: 'circle-label',
+                        html: `<div style="width: 24px; height: 24px; background: ${circleColors[i % 3]}; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white;">${i+1}</div>`,
+                        iconSize: [24, 24], iconAnchor: [12, 12]
+                    });
+
+                    let labelMarker = L.marker([latlng.lat, latlng.lng], { icon: label, draggable: true }).addTo(map);
+
+                    // Drag to update location
+                    labelMarker.on("dragend", function() {
+                        let pos = labelMarker.getLatLng();
+                        set(ref(db, "markers/" + key), { lat: pos.lat, lng: pos.lng });
+                    });
+
+                    userMarkers.push({ circle, labelMarker });
+
+                    // Right-click to delete
+                    circle.on("contextmenu", function() {
+                        remove(ref(db, "markers/" + key));
+                    });
+
+                    labelMarker.on("contextmenu", function() {
+                        remove(ref(db, "markers/" + key));
+                    });
+                });
+            }
+        });
+
+        // 🆕 Add marker on click
+        map.on('click', function(event) {
+            if (userMarkers.length < 3) {
+                let key = "marker" + Date.now(); // Unique key for Firebase
+                set(ref(db, "markers/" + key), { lat: event.latlng.lat, lng: event.latlng.lng });
+            } else {
+                alert('You can only add 3 markers. Right-click to remove.');
+            }
+        });
+    </script>
+</head>
+<body>
+    <h2>Real-time Interactive Map</h2>
+    <p>Click anywhere to place up to 3 numbered circles. Drag to move. Right-click to remove. Everyone sees updates live!</p>
+    <div id="map" style="height: 600px; width: 100%;"></div>
+</body>
+</html>
